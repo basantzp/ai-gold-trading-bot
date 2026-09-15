@@ -76,7 +76,8 @@ def execute_trade(
     lot_size: float = None,
     sl: float = None,
     tp: float = None,
-    comment: str = "AI Hedge Fund Bot"
+    comment: str = "AI Hedge Fund Bot",
+    current_price: float = None
 ) -> Dict[str, Any]:
     """
     Executes a trade order based on the AI Brain's decision.
@@ -88,6 +89,7 @@ def execute_trade(
         sl: Stop loss price
         tp: Take profit price
         comment: Order comment tag
+        current_price: Current market price (for accurate simulation fill)
 
     Returns:
         Dictionary with execution details and status
@@ -207,9 +209,30 @@ def execute_trade(
             pass
 
     # 4. Simulation / Paper Trading Execution (Fallback when MT5 is offline or on Linux)
-    # Estimate execution price from provided inputs or current market
-    simulated_order_id = f"SIM-{int(time.time() * 1000) % 10000000}"
-    sim_price = float(sl + tp) / 2.0 if (sl and tp) else 68500.0
+    import portfolio
+
+    if current_price and current_price > 0:
+        sim_price = float(current_price)
+    elif sl and tp:
+        sim_price = float(sl + tp) / 2.0
+    else:
+        sim_price = 2700.0 if ("XAU" in symbol.upper() or "GOLD" in symbol.upper()) else 68500.0
+
+    # Register into portfolio manager
+    try:
+        pos = portfolio.open_new_position(
+            symbol=symbol,
+            action=decision,
+            entry_price=sim_price,
+            volume=lot_size,
+            sl=float(sl) if sl else 0.0,
+            tp=float(tp) if tp else 0.0,
+            reason=comment,
+            model="Antigravity AI (Simulation)"
+        )
+        simulated_order_id = pos["position_id"]
+    except Exception as e:
+        simulated_order_id = f"SIM-{int(time.time() * 1000) % 10000000}"
 
     record = {
         "success": True,
@@ -224,7 +247,7 @@ def execute_trade(
         "tp": float(tp) if tp else 0.0,
         "comment": f"{comment} [Paper Mode]",
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-        "message": f"Simulated {decision} {lot_size} lots of {symbol} at {sim_price:.2f}"
+        "message": f"Simulated {decision} {lot_size} lots of {symbol} at ${sim_price:.2f}"
     }
     log_trade_to_history(record)
     return record

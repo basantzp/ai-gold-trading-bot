@@ -22,6 +22,7 @@ ENV/
 
 # Trade data (local)
 trade_history.json
+account_state.json
 
 # IDE
 .vscode/

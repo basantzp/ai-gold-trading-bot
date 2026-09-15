@@ -18,6 +18,8 @@ from data_engine import (
 )
 from ai_brain import analyze_market
 from execution import execute_trade, get_trade_history
+import portfolio
+from auto_trader import get_auto_trader
 
 # -------------------------------------------------------------
 # Streamlit Page Setup & Custom Styling
@@ -199,7 +201,7 @@ with col_h1:
     st.markdown("Multi-timeframe algorithmic analysis (**4H Trend Bias** + **15M Tactical Entry**) powered by Frontier LLM Reasoning.")
 
 with col_h2:
-    symbol_list = ["BTCUSD", "ETHUSD", "XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "SOLUSD"]
+    symbol_list = ["XAUUSD", "BTCUSD", "ETHUSD", "EURUSD", "GBPUSD", "USDJPY", "SOLUSD"]
     selected_symbol = st.selectbox("🎯 Select Market Symbol", symbol_list, index=0)
 
 # Quick Fetch Market Snapshot
@@ -324,9 +326,52 @@ with chart_tab2:
 
 
 # -------------------------------------------------------------
-# Trigger Button & Orchestration Pipeline
+# Autonomous Trading Engine Control Center
 # -------------------------------------------------------------
 st.markdown("---")
+st.subheader("🤖 Autonomous Trading Engine ($100 Capital Auto-Pilot)")
+
+auto_trader = get_auto_trader()
+trader_status = auto_trader.get_status()
+is_auto_running = trader_status["is_running"]
+
+ctl_col1, ctl_col2, ctl_col3, ctl_col4 = st.columns([2, 1, 1, 1])
+
+with ctl_col1:
+    if is_auto_running:
+        st.success(f"🟢 **AUTONOMOUS TRADING ACTIVE** | Running on {trader_status['symbol']} every {trader_status['interval']}s")
+    else:
+        st.info("⏸️ **AUTONOMOUS TRADING PAUSED** | Click 'Start Auto-Pilot' to begin autonomous trading.")
+    st.caption(f"Status: {trader_status.get('last_message', 'Ready.')}")
+
+with ctl_col2:
+    if not is_auto_running:
+        if st.button("▶️ Start Auto-Pilot", use_container_width=True, type="primary"):
+            auto_trader.start(interval=20, symbol=selected_symbol)
+            st.rerun()
+    else:
+        if st.button("⏹️ Stop Auto-Pilot", use_container_width=True):
+            auto_trader.stop()
+            st.rerun()
+
+with ctl_col3:
+    if st.button("⚡ Run 1 Cycle Now", use_container_width=True):
+        with st.spinner("Running single autonomous cycle..."):
+            res = auto_trader.run_cycle_once()
+            st.info(f"Cycle completed: {res.get('message', 'Done')}")
+            st.rerun()
+
+with ctl_col4:
+    if st.button("🔄 Reset Account ($100)", use_container_width=True):
+        portfolio.initialize_account(100.0, force=True)
+        st.success("Account reset to $100.00 initial capital.")
+        st.rerun()
+
+# -------------------------------------------------------------
+# Manual Trigger Button & Orchestration Pipeline
+# -------------------------------------------------------------
+st.markdown("---")
+st.subheader("🎯 Manual AI Analysis & Execution")
 btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
 with btn_col2:
     execute_btn = st.button("🚀 Start AI Analysis & Execute Trade", use_container_width=True)
@@ -373,7 +418,8 @@ if execute_btn:
                 lot_size=lot_size,
                 sl=sl_val,
                 tp=tp_val,
-                comment=f"AI-{decision}-{int(confidence)}%"
+                comment=f"AI-{decision}-{confidence}%",
+                current_price=current_price
             )
         else:
             execution_result = {
@@ -437,15 +483,149 @@ if execute_btn:
 
 
 # -------------------------------------------------------------
-# Historical Trades & Audit Log
+# Live Financial Performance, Win/Loss & Realized Earnings Ledger
 # -------------------------------------------------------------
 st.markdown("---")
-st.subheader("📜 Recent Trade Audit Ledger")
-history = get_trade_history()
-if history:
-    history_df = pd.DataFrame(history)
-    display_cols = ["timestamp", "symbol", "action", "volume", "price", "sl", "tp", "mode", "order_id", "status"]
-    available_cols = [c for c in display_cols if c in history_df.columns]
-    st.dataframe(history_df[available_cols], use_container_width=True)
-else:
-    st.caption("No trades recorded yet. Click 'Start AI Analysis & Execute Trade' to place your first trade.")
+st.subheader("🏆 Live Financial Performance & Realized Earnings Ledger")
+st.caption("Live accounting of $100 starting capital, executed positions, TP/SL monitoring, and real-time net earnings.")
+
+@st.fragment(run_every="5s")
+def render_live_portfolio_ledger():
+    # Update open positions against live market price
+    if current_price and current_price > 0:
+        portfolio.check_and_update_positions(selected_symbol, current_price)
+
+    acc = portfolio.get_account_state()
+    initial_cap = acc.get("initial_balance", 100.0)
+    balance = acc.get("balance", 100.0)
+    equity = acc.get("equity", 100.0)
+    realized_pnl = acc.get("realized_pnl", 0.0)
+    unrealized_pnl = acc.get("unrealized_pnl", 0.0)
+    total_earned = round((balance - initial_cap) + unrealized_pnl, 2)
+    return_pct = round((total_earned / initial_cap) * 100.0, 2) if initial_cap > 0 else 0.0
+    win_rate = acc.get("win_rate", 0.0)
+    wins = acc.get("win_count", 0)
+    losses = acc.get("loss_count", 0)
+    bes = acc.get("breakeven_count", 0)
+    open_pos = acc.get("open_positions", [])
+    closed_trades = acc.get("closed_trades", [])
+
+    # 4 Main Financial Metric Cards
+    p1, p2, p3, p4 = st.columns(4)
+    with p1:
+        st.markdown(f"""
+        <div class="metric-card">
+            <span style="color:#94a3b8; font-size:12px; font-weight:600;">INITIAL ALLOCATION</span>
+            <h2 style="margin:4px 0 0 0; color:#f8fafc;">${initial_cap:,.2f}</h2>
+            <span style="font-size:11px; color:#64748b;">Starting Paper Capital</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with p2:
+        st.markdown(f"""
+        <div class="metric-card">
+            <span style="color:#94a3b8; font-size:12px; font-weight:600;">PORTFOLIO EQUITY</span>
+            <h2 style="margin:4px 0 0 0; color:#38bdf8;">${equity:,.2f}</h2>
+            <span style="font-size:11px; color:#64748b;">Cash: ${balance:,.2f} | Float: ${unrealized_pnl:+,.2f}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with p3:
+        pnl_color = "#10b981" if total_earned >= 0 else "#ef4444"
+        pnl_sign = "+" if total_earned >= 0 else ""
+        st.markdown(f"""
+        <div class="metric-card">
+            <span style="color:#94a3b8; font-size:12px; font-weight:600;">TOTAL NET EARNED</span>
+            <h2 style="margin:4px 0 0 0; color:{pnl_color};">{pnl_sign}${total_earned:,.2f}</h2>
+            <span style="font-size:11px; color:{pnl_color}; font-weight:600;">ROI: {pnl_sign}{return_pct:.2f}%</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with p4:
+        wr_color = "#10b981" if win_rate >= 50 else ("#f59e0b" if win_rate > 0 else "#94a3b8")
+        st.markdown(f"""
+        <div class="metric-card">
+            <span style="color:#94a3b8; font-size:12px; font-weight:600;">WIN RATE & RECORD</span>
+            <h2 style="margin:4px 0 0 0; color:{wr_color};">{win_rate:.1f}%</h2>
+            <span style="font-size:11px; color:#64748b;">🏆 {wins} Wins &nbsp;|&nbsp; 🛑 {losses} Losses</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Active Live Open Positions Table
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("#### ⚡ Active Live Open Positions (Floating P&L)")
+    if open_pos:
+        pos_rows = []
+        for pos in open_pos:
+            pos_rows.append({
+                "Position ID": pos["position_id"],
+                "Symbol": pos["symbol"],
+                "Direction": pos["action"],
+                "Lots": pos["volume"],
+                "Entry Price": f"${pos['entry_price']:,.2f}",
+                "Live Price": f"${pos.get('current_price', current_price):,.2f}",
+                "Stop Loss (SL)": f"${pos['sl']:,.2f}" if pos.get('sl') else "None",
+                "Take Profit (TP)": f"${pos['tp']:,.2f}" if pos.get('tp') else "None",
+                "Floating P&L ($)": f"{pos.get('unrealized_pnl', 0.0):+,.2f}",
+                "Return (%)": f"{pos.get('return_pct', 0.0):+,.2f}%",
+                "Open Time": pos["open_time"]
+            })
+        st.dataframe(pd.DataFrame(pos_rows), use_container_width=True)
+    else:
+        st.info("ℹ️ No open positions right now. The Autonomous Trader is actively scanning the market for high-conviction entries.")
+
+    # Closed Trades & Realized Earnings Ledger
+    st.markdown("#### 📜 Completed Trades Audit Ledger")
+    if closed_trades:
+        closed_rows = []
+        for tr in closed_trades:
+            pnl_val = tr.get("pnl", 0.0)
+            closed_rows.append({
+                "Trade ID": tr.get("trade_id", ""),
+                "Symbol": tr.get("symbol", ""),
+                "Direction": tr.get("action", ""),
+                "Lots": tr.get("volume", 0.01),
+                "Entry Price": f"${tr.get('entry_price', 0.0):,.2f}",
+                "Exit Price": f"${tr.get('exit_price', 0.0):,.2f}",
+                "Realized P&L ($)": f"{pnl_val:+,.2f}",
+                "Return (%)": f"{tr.get('return_pct', 0.0):+,.2f}%",
+                "Exit Reason": tr.get("exit_reason", "Closed"),
+                "Close Time": tr.get("close_time", "")
+            })
+        st.dataframe(pd.DataFrame(closed_rows), use_container_width=True)
+
+        # Capital Growth Curve
+        if len(closed_trades) >= 1:
+            cum_curve = [initial_cap]
+            cum_times = ["Start"]
+            curr_running = initial_cap
+            for tr in reversed(closed_trades):
+                curr_running += tr.get("pnl", 0.0)
+                cum_curve.append(curr_running)
+                cum_times.append(tr.get("close_time", "")[-12:])
+
+            fig_pnl = go.Figure()
+            fig_pnl.add_trace(go.Scatter(
+                x=cum_times,
+                y=cum_curve,
+                mode="lines+markers",
+                name="Account Balance ($)",
+                line=dict(color="#10b981" if curr_running >= initial_cap else "#ef4444", width=3),
+                marker=dict(size=7, color="#38bdf8")
+            ))
+            fig_pnl.add_hline(y=initial_cap, line_dash="dash", line_color="#64748b", annotation_text="Initial $100")
+            fig_pnl.update_layout(
+                title=f"📈 Account Capital Growth Curve (Starting: ${initial_cap:.2f} ➔ Current: ${curr_running:.2f})",
+                template="plotly_dark",
+                paper_bgcolor="#131722",
+                plot_bgcolor="#131722",
+                height=280,
+                margin=dict(l=40, r=40, t=40, b=30),
+                yaxis=dict(title="Equity ($)", tickprefix="$", gridcolor="#1e222d"),
+                xaxis=dict(gridcolor="#1e222d")
+            )
+            st.plotly_chart(fig_pnl, use_container_width=True)
+    else:
+        st.caption("No closed trades yet. When active positions hit Take Profit (TP) or Stop Loss (SL), their realized dollar profit will appear here.")
+
+render_live_portfolio_ledger()
