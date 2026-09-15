@@ -162,11 +162,24 @@ class AutonomousTrader:
                 model_name="Antigravity (Zero-API / Native)"
             )
 
-            decision = decision_data.get("decision", "HOLD").upper().strip()
-            confidence = int(decision_data.get("confidence", 50))
-            sl = float(decision_data.get("stop_loss", 0.0))
-            tp = float(decision_data.get("take_profit", 0.0))
+            decision = (decision_data.get("decision") or "HOLD").upper().strip()
+            try:
+                confidence = int(decision_data.get("confidence") or 50)
+            except (ValueError, TypeError):
+                confidence = 50
+
+            try:
+                sl = float(decision_data.get("stop_loss") or 0.0)
+            except (ValueError, TypeError):
+                sl = 0.0
+
+            try:
+                tp = float(decision_data.get("take_profit") or 0.0)
+            except (ValueError, TypeError):
+                tp = 0.0
+
             self.last_decision = f"{decision} ({confidence}%)"
+
 
             if "strategies" in decision_data:
                 self.last_strategy_confluence = decision_data.get("strategies", {})
