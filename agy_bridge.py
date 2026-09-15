@@ -53,6 +53,16 @@ class AgyBridge:
         if self.process and self.process.returncode is None:
             return  # already running
 
+        # Strip ANTIGRAVITY_AGENT so agy doesn't refuse to start nested inside another session
+        clean_env = {
+            k: v for k, v in os.environ.items()
+            if k not in (
+                "ANTIGRAVITY_AGENT", "ANTIGRAVITY_CONVERSATION_ID",
+                "ANTIGRAVITY_TRAJECTORY_ID", "ANTIGRAVITY_LS_ADDRESS",
+                "ANTIGRAVITY_CSRF_TOKEN", "ANTIGRAVITY_SOURCE_METADATA"
+            )
+        }
+
         print(f"[AGY-BRIDGE] Starting persistent agy process: {AGY_BIN}")
         self.process = await asyncio.create_subprocess_exec(
             AGY_BIN,
@@ -62,6 +72,7 @@ class AgyBridge:
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
+            env=clean_env,
         )
 
         # Read the init event to confirm startup

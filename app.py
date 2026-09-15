@@ -140,7 +140,11 @@ with st.sidebar:
     openai_key_input = ""
 
     if "Antigravity" in ai_provider:
-        st.success("🟢 **Zero-API Mode Active**: Using local Antigravity CLI (`agy`). No API keys or credit card required!")
+        from ai_brain import is_bridge_alive
+        if is_bridge_alive():
+            st.success("🟢 **Zero-API Mode Active**: Antigravity Bridge (:8400) connected! Ultra-fast response active.")
+        else:
+            st.warning("🟡 **Zero-API Mode Active**: Bridge offline. Using cold CLI fallback (`agy`).")
         selected_model = "Antigravity (DeepMind / Gemini Engine)"
         chosen_provider = "Antigravity"
     elif "Gemini" in ai_provider:
