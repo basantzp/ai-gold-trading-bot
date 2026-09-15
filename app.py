@@ -250,26 +250,32 @@ def create_candlestick_chart(df: pd.DataFrame, title: str):
         return go.Figure()
 
     fig = make_subplots(
-        rows=2, cols=1,
+        rows=3, cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.08,
-        subplot_titles=(title, "RSI (14)"),
-        row_heights=[0.75, 0.25]
+        vertical_spacing=0.03,
+        row_heights=[0.65, 0.12, 0.23],
+        specs=[
+            [{"type": "candlestick"}],
+            [{"type": "bar"}],
+            [{"type": "scatter"}]
+        ]
     )
 
-    # Candlestick
+    # ── Candlesticks (TradingView palette) ──────────────────────
     fig.add_trace(go.Candlestick(
         x=df["time"],
-        open=df["open"],
-        high=df["high"],
-        low=df["low"],
-        close=df["close"],
+        open=df["open"], high=df["high"],
+        low=df["low"],   close=df["close"],
         name="OHLC",
-        increasing_line_color="#10b981",
-        decreasing_line_color="#ef4444"
+        increasing_line_color="#26a69a",
+        increasing_fillcolor="#26a69a",
+        decreasing_line_color="#ef5350",
+        decreasing_fillcolor="#ef5350",
+        line=dict(width=1),
+        whiskerwidth=0.4,
     ), row=1, col=1)
 
-    # Moving Average
+    # ── SMA 7 ────────────────────────────────────────────────────
     if "sma_7" in df.columns:
         fig.add_trace(go.Scatter(
             x=df["time"], y=df["sma_7"],
