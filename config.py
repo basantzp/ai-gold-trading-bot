@@ -49,7 +49,18 @@ MAGIC_NUMBER = int(os.getenv("MAGIC_NUMBER", "998877"))
 # Timeframes for multi-timeframe analysis
 TIMEFRAME_HTF = "H4"   # Higher Timeframe: 4-Hour trend analysis
 TIMEFRAME_LTF = "M15"  # Lower Timeframe: 15-Minute entry confirmation
-CANDLES_COUNT = int(os.getenv("CANDLES_COUNT", "15"))
+CANDLES_COUNT = int(os.getenv("CANDLES_COUNT", "100"))
+
+# ==========================================
+# 4. Hyper-Compounding & Strategy Target ($100 -> $10,000)
+# ==========================================
+DAILY_TARGET_EQUITY = float(os.getenv("DAILY_TARGET_EQUITY", "10000.0"))
+INITIAL_CAPITAL = float(os.getenv("INITIAL_CAPITAL", "100.0"))
+ENABLE_HYPER_COMPOUNDING = os.getenv("ENABLE_HYPER_COMPOUNDING", "true").lower() in ("true", "1", "yes")
+COMPOUND_BASE_RISK_PCT = float(os.getenv("COMPOUND_BASE_RISK_PCT", "0.08"))  # 8% risk per high-conviction setup
+MAX_LOT_SIZE = float(os.getenv("MAX_LOT_SIZE", "5.0"))
+MIN_CONFLUENCE_SCORE = int(os.getenv("MIN_CONFLUENCE_SCORE", "65"))
 
 # Allow Paper/Simulation mode if MT5 is not running or on Linux/Mac
 SIMULATION_MODE = os.getenv("SIMULATION_MODE", "auto")
+

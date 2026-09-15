@@ -14,6 +14,7 @@ from typing import Dict, Any, Optional
 
 import config
 import portfolio
+import strategy_engine
 from data_engine import get_market_data
 from ai_brain import analyze_market, is_bridge_alive
 from execution import execute_trade
@@ -42,13 +43,17 @@ class AutonomousTrader:
         self.stop_event = threading.Event()
         self.interval = 20  # seconds between cycles
         self.symbol = config.DEFAULT_SYMBOL or "XAUUSD"
-        self.lot_size = 0.01  # Safe micro lot for $100 capital
-        self.min_confidence = 65  # Minimum AI conviction to enter
+        self.lot_size = 0.01  # Fallback base micro lot
+        self.min_confidence = getattr(config, "MIN_CONFLUENCE_SCORE", 65)  # Minimum conviction to enter
+        self.hyper_compounding = getattr(config, "ENABLE_HYPER_COMPOUNDING", True)
+        self.target_equity = getattr(config, "DAILY_TARGET_EQUITY", 10000.0)
         self.last_run_time: Optional[str] = None
         self.last_decision: Optional[str] = None
-        self.last_message: str = "AutoTrader initialized. Ready to launch."
+        self.last_message: str = "AutoTrader initialized with 3 Quantitative Strategies. Ready to launch."
         self.iteration_count = 0
         self.last_error: Optional[str] = None
+        self.last_strategy_confluence: Dict[str, Any] = {}
+        self.last_compounding_metrics: Dict[str, Any] = {}
 
     def start(self, interval: int = 20, symbol: str = "XAUUSD") -> Dict[str, Any]:
         """Starts the autonomous trading loop in a background daemon thread."""
@@ -60,7 +65,7 @@ class AutonomousTrader:
             self.symbol = symbol
             self.stop_event.clear()
             self.is_running = True
-            self.last_message = f"🚀 AutoTrader started on {self.symbol} (interval: {self.interval}s)."
+            self.last_message = f"🚀 AutoTrader started on {self.symbol} (Compounding: {'Active' if self.hyper_compounding else 'Fixed'} | interval: {self.interval}s)."
 
             self.thread = threading.Thread(target=self._run_loop, daemon=True)
             self.thread.start()
@@ -82,6 +87,12 @@ class AutonomousTrader:
     def get_status(self) -> Dict[str, Any]:
         """Returns current operational status and account summary."""
         state = portfolio.get_account_state()
+        equity = state.get("equity", 100.0)
+        initial_cap = state.get("initial_balance", 100.0)
+        target_cap = self.target_equity
+        progress_pct = max(0.0, min(100.0, ((equity - initial_cap) / max(target_cap - initial_cap, 1.0)) * 100.0))
+        multiplier = round(equity / max(initial_cap, 1.0), 2)
+
         return {
             "is_running": self.is_running and (self.thread is not None and self.thread.is_alive()),
             "symbol": self.symbol,
@@ -92,12 +103,19 @@ class AutonomousTrader:
             "last_message": self.last_message,
             "last_error": self.last_error,
             "balance": state.get("balance", 100.0),
-            "equity": state.get("equity", 100.0),
+            "equity": equity,
+            "target_equity": target_cap,
+            "progress_pct": round(progress_pct, 1),
+            "equity_multiplier": multiplier,
+            "hyper_compounding": self.hyper_compounding,
             "realized_pnl": state.get("realized_pnl", 0.0),
             "win_rate": state.get("win_rate", 0.0),
             "open_positions_count": len(state.get("open_positions", [])),
             "closed_trades_count": len(state.get("closed_trades", [])),
+            "strategy_confluence": self.last_strategy_confluence,
+            "compounding_metrics": self.last_compounding_metrics
         }
+
 
     def run_cycle_once(self) -> Dict[str, Any]:
         """Executes a single evaluation cycle (used by both loop and manual trigger)."""
@@ -150,6 +168,9 @@ class AutonomousTrader:
             tp = float(decision_data.get("take_profit", 0.0))
             self.last_decision = f"{decision} ({confidence}%)"
 
+            if "strategies" in decision_data:
+                self.last_strategy_confluence = decision_data.get("strategies", {})
+
             # 5. Execution decision
             if decision in ["BUY", "SELL"] and confidence >= self.min_confidence:
                 # Sanity check SL & TP distances
@@ -162,11 +183,26 @@ class AutonomousTrader:
                         sl = current_price + (atr * 1.5)
                         tp = current_price - (atr * 2.5)
 
-                comment = f"AutoTrader-{decision}-{confidence}%"
+                # Dynamic Hyper-Compounding Lot Calculation ($100 -> $10,000 engine)
+                equity = state.get("equity", 100.0)
+                if self.hyper_compounding:
+                    comp = strategy_engine.calculate_compounded_position_size(
+                        account_equity=equity,
+                        entry_price=current_price,
+                        stop_loss=sl,
+                        symbol=self.symbol,
+                        confidence=confidence
+                    )
+                    exec_lot = comp["lot_size"]
+                    self.last_compounding_metrics = comp
+                else:
+                    exec_lot = self.lot_size
+
+                comment = f"AutoTrader-{decision}-{confidence}%-L{exec_lot}"
                 result = execute_trade(
                     symbol=self.symbol,
                     decision=decision,
-                    lot_size=self.lot_size,
+                    lot_size=exec_lot,
                     sl=sl,
                     tp=tp,
                     comment=comment,
@@ -175,7 +211,7 @@ class AutonomousTrader:
 
                 if result.get("success"):
                     order_id = result.get("order_id", f"POS-{int(time.time()*1000)%10000000}")
-                    msg = f"🚀 Executed {decision} 0.01 lots @ ${current_price:.2f} | SL: ${sl:.2f} | TP: ${tp:.2f} (Conviction: {confidence}%)"
+                    msg = f"🚀 Executed {decision} {exec_lot} lots @ ${current_price:.2f} | SL: ${sl:.2f} | TP: ${tp:.2f} (Conviction: {confidence}%)"
                     self.last_message = msg
                     logger.info(msg)
 
@@ -198,7 +234,7 @@ class AutonomousTrader:
                             symbol=self.symbol,
                             action=decision,
                             entry_price=current_price,
-                            volume=self.lot_size,
+                            volume=exec_lot,
                             sl=sl,
                             tp=tp,
                             confidence=confidence,
@@ -213,7 +249,7 @@ class AutonomousTrader:
                     msg = f"Order failed: {result.get('message')}"
                     self.last_message = msg
             else:
-                msg = f"AI Signal: {decision} ({confidence}%). Below {self.min_confidence}% threshold or HOLD. Capital preserved."
+                msg = f"Quantitative Signal: {decision} ({confidence}%). Below {self.min_confidence}% threshold or HOLD. Capital preserved."
                 self.last_message = msg
 
             self.last_error = None

@@ -17,6 +17,7 @@ from typing import Dict, Any, Tuple
 
 import config
 from data_engine import format_candles_summary
+from strategy_engine import fuse_quantitative_strategies
 
 # Attempt Groq import
 try:
@@ -45,17 +46,25 @@ except ImportError:
     GEMINI_SDK_AVAILABLE = False
 
 
-SYSTEM_PROMPT = """You are a Senior Quantitative Portfolio Manager and Head Trader at an elite Wall Street Hedge Fund.
-Your mandate is capital preservation first, followed by asymmetric risk-to-reward profit generation.
+SYSTEM_PROMPT = """You are a World-Class Quantitative Hedge Fund Portfolio Manager and Robbins World Cup Champion Trader.
+Your objective is aggressive capital compounding from $100 up to $10,000 daily, adhering to strict mathematical risk-to-reward asymmetry (minimum 1:2.0 RR).
 
-You employ a strict multi-timeframe methodology:
-1. HIGHER TIMEFRAME (4-Hour): Establishes macro directional bias (Bullish, Bearish, or Neutral Range) based on moving averages, market structure, and higher-high / lower-low sequences.
-2. LOWER TIMEFRAME (15-Minute): Identifies precise execution setups, momentum exhaustion, RSI divergence/oversold/overbought conditions, and dynamic pullbacks to key support/resistance levels.
+You combine THREE elite high win-rate quantitative trading methodologies:
+1. TRADINGLAB 86% WIN RATE MACD + 200 EMA STRATEGY:
+   - Trend Filter: Price > 200 EMA = strictly BUY; Price < 200 EMA = strictly SELL.
+   - Dynamic Pullback: Price pulls back to 50 EMA or dynamic support/resistance.
+   - MACD Trigger: BUY on MACD line crossing ABOVE signal line WHILE BELOW the zero line. SELL on MACD line crossing BELOW signal line WHILE ABOVE the zero line.
+2. DUMB MONEY CONCEPTS (DMC) 80-90% WIN RATE LIQUIDITY SWEEPS:
+   - Identify key swing highs and swing lows (liquidity pools / stop clusters).
+   - Liquidity Sweep Trap: Price probes outside the key level, triggers retail stops, but wicks reject heavily (>= 30% wick) and closes back INSIDE the level range.
+3. ROBBINS WORLD CHAMPION ORDER FLOW & FAILED AUCTION:
+   - Value Area High (VAH), Value Area Low (VAL), and Point of Control (POC).
+   - Failed Auction: Price pushes to extreme but aggressive volume delta exhausts/absorbs, rotating back to POC.
 
 CRITICAL INSTRUCTIONS:
 - You must decide only ONE action: "BUY", "SELL", or "HOLD".
-- When trend is choppy or high-risk, prefer "HOLD".
-- Provide explicit, non-zero Stop Loss (SL) and Take Profit (TP) calibrated to the market ATR and volatility (minimum 1:1.5 Risk-to-Reward ratio, ideally 1:2 or better).
+- Look for MULTI-STRATEGY CONFLUENCE (when 2 or 3 strategies align in the same direction, grade as A+ Setup with 85-95% confidence).
+- Provide explicit, non-zero Stop Loss (SL) and Take Profit (TP) calibrated to the market ATR and structural swings (minimum 1:2.0 Risk-to-Reward ratio).
 - For BUY: Stop Loss MUST be BELOW current price; Take Profit MUST be ABOVE current price.
 - For SELL: Stop Loss MUST be ABOVE current price; Take Profit MUST be BELOW current price.
 - You MUST respond ONLY in valid JSON format matching this exact schema:
@@ -63,14 +72,14 @@ CRITICAL INSTRUCTIONS:
 ```json
 {
   "decision": "BUY" | "SELL" | "HOLD",
-  "confidence": 78,
-  "suggested_entry": 67800.50,
-  "stop_loss": 66950.00,
-  "take_profit": 69500.00,
-  "risk_reward_ratio": "1:2.0",
+  "confidence": 88,
+  "suggested_entry": 2750.50,
+  "stop_loss": 2742.00,
+  "take_profit": 2770.00,
+  "risk_reward_ratio": "1:2.3",
   "h4_trend_analysis": "Clear explanation of 4H macro trend",
   "m15_setup_analysis": "Explanation of 15M trigger and candle dynamics",
-  "reasoning": "Comprehensive professional thesis justifying the execution"
+  "reasoning": "Comprehensive institutional thesis citing confluence of MACD, DMC sweep, and Orderflow"
 }
 ```
 Do not include any conversational filler, intro, or outro. Return ONLY the JSON object.
@@ -78,30 +87,48 @@ Do not include any conversational filler, intro, or outro. Return ONLY the JSON 
 
 
 def build_market_prompt(symbol: str, current_price: float, df_h4: pd.DataFrame, df_m15: pd.DataFrame) -> str:
-    """Builds the comprehensive market context prompt for the AI model."""
+    """Builds the comprehensive market context prompt with quantitative strategy signals for the AI model."""
     h4_summary = format_candles_summary(df_h4, f"{symbol} Higher Timeframe (4-Hour)")
     m15_summary = format_candles_summary(df_m15, f"{symbol} Execution Timeframe (15-Minute)")
 
     latest_m15 = df_m15.iloc[-1] if not df_m15.empty else {}
     rsi_14 = latest_m15.get("rsi_14", 50.0)
     atr = latest_m15.get("atr", current_price * 0.005)
+    ema_200 = latest_m15.get("ema_200", current_price)
+    macd_l = latest_m15.get("macd_line", 0.0)
+    sig_l = latest_m15.get("signal_line", 0.0)
+
+    # Run Quantitative Strategy Engine Analysis
+    quant_signals = fuse_quantitative_strategies(symbol, current_price, df_h4, df_m15)
+    s1 = quant_signals["strategies"]["s1_macd_200ema"]
+    s2 = quant_signals["strategies"]["s2_dmc_sweep"]
+    s3 = quant_signals["strategies"]["s3_orderflow"]
 
     prompt = f"""
 ASSET SYMBOL: {symbol}
 CURRENT MARKET PRICE: {current_price:.4f}
+200 EMA LEVEL: {ema_200:.4f} ({'BULLISH: Above 200 EMA' if current_price >= ema_200 else 'BEARISH: Below 200 EMA'})
 ESTIMATED ATR (VOLATILITY): {atr:.4f}
 CURRENT 15M RSI (14): {rsi_14:.2f}
+CURRENT 15M MACD: Line={macd_l:.4f}, Signal={sig_l:.4f}
+
+=== ALGORITHMIC QUANTITATIVE STRATEGY METRICS ===
+1. TradingLab MACD + 200 EMA: Signal={s1['signal']} | Trend={s1['trend_200']} | MACD={s1['macd_state']}
+2. Dumb Money Concepts (DMC): Signal={s2['signal']} | Sweep Status={s2['sweep_type']}
+3. Robbins Cup Order Flow: Signal={s3['signal']} | Auction State={s3['auction_state']}
+QUANT CONFLUENCE GRADE: {quant_signals['grade']} (Algorithmic Conviction: {quant_signals['confidence']}%)
 
 {h4_summary}
 
 {m15_summary}
 
-Based on this market snapshot:
-1. Assess the 4H directional bias.
-2. Evaluate the 15M tactical entry setup.
-3. Formulate your final trade recommendation (BUY, SELL, or HOLD) with exact SL, TP, confidence, and institutional reasoning.
+Based on this complete market snapshot and the 3 quantitative strategies:
+1. Assess the 4H directional trend and 200 EMA bias.
+2. Evaluate whether TradingLab MACD, DMC Liquidity Sweep, and Robbins Order Flow provide high-conviction confluence.
+3. Formulate your final institutional trade recommendation (BUY, SELL, or HOLD) with exact SL, TP, confidence, and thesis targeting $100 -> $10,000 compounding.
 """
     return prompt
+
 
 
 def clean_json_response(raw_text: str) -> Dict[str, Any]:
@@ -285,10 +312,10 @@ def call_groq_api(api_key: str, model: str, prompt: str) -> Dict[str, Any]:
         return clean_json_response(raw_response)
 
 
-def fallback_quant_engine(symbol: str, current_price: float, df_m15: pd.DataFrame) -> Dict[str, Any]:
+def fallback_quant_engine(symbol: str, current_price: float, df_m15: pd.DataFrame, df_h4: pd.DataFrame = None) -> Dict[str, Any]:
     """
-    Algorithmic quant fallback when no AI API key is configured.
-    Evaluates RSI and Moving Average crossovers to provide a realistic signal.
+    Algorithmic quant strategy engine fallback (TradingLab MACD + DMC Sweeps + Robbins Order Flow).
+    Evaluates multi-strategy confluence with mathematical precision.
     """
     if df_m15 is None or df_m15.empty:
         return {
@@ -303,52 +330,7 @@ def fallback_quant_engine(symbol: str, current_price: float, df_m15: pd.DataFram
             "reasoning": "Fallback quant engine recommends HOLD due to neutral momentum and balanced order flow."
         }
 
-    latest = df_m15.iloc[-1]
-    rsi = latest.get("rsi_14", 50.0)
-    sma = latest.get("sma_7", current_price)
-    atr = latest.get("atr", current_price * 0.008)
-    if not atr or pd.isna(atr) or atr == 0:
-        atr = current_price * 0.008
-
-    if rsi < 38 and current_price >= sma:
-        decision = "BUY"
-        confidence = 76
-        sl = round(current_price - (atr * 1.5), 2)
-        tp = round(current_price + (atr * 3.0), 2)
-        rr = "1:2.0"
-        h4_trend = "Bullish recovery off institutional demand zone."
-        m15_setup = f"RSI oversold rebound ({rsi:.1f}) re-crossing above dynamic SMA-7."
-        reasoning = "Quantitative mean-reversion filter triggered. Favorable risk-to-reward ratio with stop below structural support."
-    elif rsi > 65 and current_price <= sma:
-        decision = "SELL"
-        confidence = 74
-        sl = round(current_price + (atr * 1.5), 2)
-        tp = round(current_price - (atr * 3.0), 2)
-        rr = "1:2.0"
-        h4_trend = "Bearish rejection at macro resistance level."
-        m15_setup = f"RSI overbought exhaustion ({rsi:.1f}) with bearish price displacement below SMA-7."
-        reasoning = "Sell signal confirmed by technical momentum exhaustion and high liquidity sweep."
-    else:
-        decision = "HOLD"
-        confidence = 60
-        sl = round(current_price - atr, 2)
-        tp = round(current_price + atr, 2)
-        rr = "1:1.0"
-        h4_trend = "Market in balanced consolidation range."
-        m15_setup = f"RSI neutral ({rsi:.1f}); waiting for definitive structural expansion."
-        reasoning = "Capital preservation prioritized. Current price is within fair-value equilibrium."
-
-    return {
-        "decision": decision,
-        "confidence": confidence,
-        "suggested_entry": current_price,
-        "stop_loss": sl,
-        "take_profit": tp,
-        "risk_reward_ratio": rr,
-        "h4_trend_analysis": h4_trend,
-        "m15_setup_analysis": m15_setup,
-        "reasoning": reasoning
-    }
+    return fuse_quantitative_strategies(symbol, current_price, df_h4, df_m15)
 
 
 def analyze_market(
@@ -455,5 +437,6 @@ def analyze_market(
                 pass
 
     # 4. Fallback Rule-Based Quant Strategy
-    parsed = fallback_quant_engine(symbol, current_price, df_m15)
-    return parsed, "Built-in Quant Engine (Enter Gemini or Groq API Key)"
+    parsed = fallback_quant_engine(symbol, current_price, df_m15, df_h4)
+    return parsed, "Quantitative Strategy Fusion Engine (TradingLab MACD + DMC + Robbins Orderflow)"
+

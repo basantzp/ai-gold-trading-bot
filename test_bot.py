@@ -65,9 +65,30 @@ def run_test():
     )
     print(f"Order Result: {exec_result}")
 
+    # 5. Quantitative Strategy Engine Test (3 YouTube Masterclasses)
+    print("\n[5/5] Testing Quantitative Strategy Confluence Engine (MACD + DMC + Robbins Order Flow)...")
+    import strategy_engine
+    quant_res = strategy_engine.fuse_quantitative_strategies(symbol, current_price, df_h4, df_m15)
+    print(f"Quant Decision: {quant_res['decision']}")
+    print(f"Quant Grade: {quant_res['grade']}")
+    print(f"Quant Conviction: {quant_res['confidence']}%")
+    print(f"Strategy 1 (MACD + 200 EMA): {quant_res['strategies']['s1_macd_200ema']['signal']} | {quant_res['strategies']['s1_macd_200ema']['macd_state']}")
+    print(f"Strategy 2 (DMC Sweeps): {quant_res['strategies']['s2_dmc_sweep']['signal']} | {quant_res['strategies']['s2_dmc_sweep']['sweep_type']}")
+    print(f"Strategy 3 (Robbins Order Flow): {quant_res['strategies']['s3_orderflow']['signal']} | {quant_res['strategies']['s3_orderflow']['auction_state']}")
+
+    # 6. Hyper-Compounding Engine Test
+    print("\n[6/6] Testing Hyper-Compounding Engine ($100 -> $10,000)...")
+    comp_100 = strategy_engine.calculate_compounded_position_size(100.0, current_price, quant_res['stop_loss'], symbol, quant_res['confidence'])
+    comp_1000 = strategy_engine.calculate_compounded_position_size(1000.0, current_price, quant_res['stop_loss'], symbol, 88)
+    comp_5000 = strategy_engine.calculate_compounded_position_size(5000.0, current_price, quant_res['stop_loss'], symbol, 92)
+    print(f"@ $100 Equity: Lot Size = {comp_100['lot_size']} | Risk $ = ${comp_100['risk_dollars']} | Progress = {comp_100['progress_pct']}% | Wins Needed = {comp_100['estimated_wins_needed']}")
+    print(f"@ $1,000 Equity: Lot Size = {comp_1000['lot_size']} | Risk $ = ${comp_1000['risk_dollars']} | Multiplier = {comp_1000['equity_multiplier']}x")
+    print(f"@ $5,000 Equity: Lot Size = {comp_5000['lot_size']} | Risk $ = ${comp_5000['risk_dollars']} | Multiplier = {comp_5000['equity_multiplier']}x")
+
     print("\n==================================================")
     print("✅ All Hedge Fund Bot Components Tested Successfully!")
     print("==================================================")
 
 if __name__ == "__main__":
     run_test()
+

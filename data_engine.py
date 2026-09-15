@@ -78,7 +78,7 @@ def get_mt5_timeframe(tf_str: str):
     return mapping.get(tf_str.upper(), mt5.TIMEFRAME_H4)
 
 
-def fetch_fallback_candles(symbol: str, timeframe: str, count: int = 15) -> pd.DataFrame:
+def fetch_fallback_candles(symbol: str, timeframe: str, count: int = 100) -> pd.DataFrame:
     """
     Fetches real-time candles from public APIs (Binance for crypto, Yahoo Finance for Forex/Gold)
     when MT5 is not accessible, ensuring the AI Brain always gets real live market data.
@@ -166,7 +166,7 @@ def fetch_fallback_candles(symbol: str, timeframe: str, count: int = 15) -> pd.D
     return pd.DataFrame(data)
 
 
-def fetch_candles_from_mt5(symbol: str, timeframe_str: str, count: int = 15) -> pd.DataFrame:
+def fetch_candles_from_mt5(symbol: str, timeframe_str: str, count: int = 100) -> pd.DataFrame:
     """Fetches candlesticks directly from MT5 terminal."""
     if not MT5_AVAILABLE:
         return None
@@ -177,7 +177,6 @@ def fetch_candles_from_mt5(symbol: str, timeframe_str: str, count: int = 15) -> 
 
     # Ensure symbol is selected in Market Watch
     if not mt5.symbol_select(symbol, True):
-        # Try alternate symbol names (e.g. BTCUSD.m, BTCUSDm, BTCUSD_i)
         symbols = mt5.symbols_get()
         found = False
         if symbols:
@@ -201,34 +200,56 @@ def fetch_candles_from_mt5(symbol: str, timeframe_str: str, count: int = 15) -> 
 
 
 def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculates key technical indicators for AI analysis."""
+    """Calculates key technical indicators for AI and quantitative strategy analysis."""
     if df is None or len(df) < 5:
         return df
 
     df = df.copy()
-    # Simple Moving Average (SMA) and Exponential Moving Average (EMA)
-    df["sma_7"] = df["close"].rolling(window=min(7, len(df))).mean()
-    df["ema_14"] = df["close"].ewm(span=min(14, len(df)), adjust=False).mean()
+    n = len(df)
 
-    # Relative Strength Index (RSI 14)
+    # 1. Moving Averages (TradingLab 200 EMA + 50 EMA dynamic pullback levels)
+    df["sma_7"] = df["close"].rolling(window=min(7, n)).mean()
+    df["ema_14"] = df["close"].ewm(span=min(14, n), adjust=False).mean()
+    df["ema_50"] = df["close"].ewm(span=min(50, n), adjust=False).mean()
+    df["ema_200"] = df["close"].ewm(span=min(200, n), adjust=False).mean()
+
+    # 2. Relative Strength Index (RSI 14)
     delta = df["close"].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=min(14, len(df))).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=min(14, len(df))).mean()
+    gain = (delta.where(delta > 0, 0)).rolling(window=min(14, n)).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=min(14, n)).mean()
     rs = gain / (loss + 1e-9)
     df["rsi_14"] = 100 - (100 / (1 + rs))
 
-    # Average True Range (ATR)
+    # 3. Average True Range (ATR)
     high_low = df["high"] - df["low"]
     high_close = (df["high"] - df["close"].shift()).abs()
     low_close = (df["low"] - df["close"].shift()).abs()
     ranges = pd.concat([high_low, high_close, low_close], axis=1)
     true_range = ranges.max(axis=1)
-    df["atr"] = true_range.rolling(min(7, len(df))).mean()
+    df["atr"] = true_range.rolling(min(7, n)).mean()
+
+    # 4. MACD (12, 26, 9) - Required for Strategy A (86% Win Rate MACD Strategy)
+    ema_12 = df["close"].ewm(span=min(12, n), adjust=False).mean()
+    ema_26 = df["close"].ewm(span=min(26, n), adjust=False).mean()
+    df["macd_line"] = ema_12 - ema_26
+    df["signal_line"] = df["macd_line"].ewm(span=min(9, n), adjust=False).mean()
+    df["macd_hist"] = df["macd_line"] - df["signal_line"]
+
+    # 5. Swing Highs & Swing Lows (Required for Strategy B: DMC Liquidity Sweeps)
+    window_swing = min(10, n)
+    df["swing_high"] = df["high"].rolling(window=window_swing).max()
+    df["swing_low"] = df["low"].rolling(window=window_swing).min()
+
+    # 6. Volume Delta & Order Flow Imbalance (Required for Strategy C: Robbins Cup Orderflow)
+    hl_range = (df["high"] - df["low"]).replace(0, 1e-9)
+    buy_ratio = (df["close"] - df["low"]) / hl_range
+    df["volume_delta"] = df["volume"] * (2 * buy_ratio - 1)
+    df["cvd"] = df["volume_delta"].cumsum()
 
     return df
 
 
-def get_market_data(symbol: str = None, count: int = 15):
+def get_market_data(symbol: str = None, count: int = None):
     """
     Main Data Engine pipeline function.
     Fetches both Higher Timeframe (4H) and Lower Timeframe (15M) data.
@@ -237,6 +258,8 @@ def get_market_data(symbol: str = None, count: int = 15):
     """
     if symbol is None:
         symbol = config.DEFAULT_SYMBOL
+    if count is None:
+        count = getattr(config, "CANDLES_COUNT", 100)
 
     df_h4 = None
     df_m15 = None
@@ -268,19 +291,22 @@ def get_market_data(symbol: str = None, count: int = 15):
 
 
 def format_candles_summary(df: pd.DataFrame, label: str) -> str:
-    """Formats candle dataframe into readable text for the AI model."""
+    """Formats candle dataframe into readable text for the AI model and quant strategy."""
     if df is None or df.empty:
         return f"{label}: No data available."
 
     recent = df.tail(8)
     lines = [f"=== {label} DATA (Last {len(recent)} Candles) ==="]
-    lines.append(f"{'Time':<19} | {'Open':>9} | {'High':>9} | {'Low':>9} | {'Close':>9} | {'RSI':>6}")
-    lines.append("-" * 75)
+    lines.append(f"{'Time':<19} | {'Open':>9} | {'High':>9} | {'Low':>9} | {'Close':>9} | {'EMA200':>9} | {'MACD':>7} | {'Sig':>7} | {'RSI':>5}")
+    lines.append("-" * 95)
 
     for _, row in recent.iterrows():
         t_str = str(row["time"])[:19]
         rsi_val = f"{row.get('rsi_14', 0):.1f}" if pd.notnull(row.get('rsi_14')) else "N/A"
-        lines.append(f"{t_str:<19} | {row['open']:>9.2f} | {row['high']:>9.2f} | {row['low']:>9.2f} | {row['close']:>9.2f} | {rsi_val:>6}")
+        ema200 = f"{row.get('ema_200', 0):.2f}" if pd.notnull(row.get('ema_200')) else "N/A"
+        macd_l = f"{row.get('macd_line', 0):.2f}" if pd.notnull(row.get('macd_line')) else "N/A"
+        sig_l = f"{row.get('signal_line', 0):.2f}" if pd.notnull(row.get('signal_line')) else "N/A"
+        lines.append(f"{t_str:<19} | {row['open']:>9.2f} | {row['high']:>9.2f} | {row['low']:>9.2f} | {row['close']:>9.2f} | {ema200:>9} | {macd_l:>7} | {sig_l:>7} | {rsi_val:>5}")
 
     # Summary metrics
     latest = df.iloc[-1]
@@ -288,7 +314,10 @@ def format_candles_summary(df: pd.DataFrame, label: str) -> str:
     lowest = df["low"].min()
     change = ((latest["close"] - df["open"].iloc[0]) / df["open"].iloc[0]) * 100
     atr = latest.get("atr", 0.0)
+    ema200_val = latest.get("ema_200", 0.0)
+    trend_200 = "BULLISH (Above 200 EMA)" if latest["close"] >= ema200_val else "BEARISH (Below 200 EMA)"
 
-    lines.append("-" * 75)
-    lines.append(f"Latest Close: {latest['close']:.2f} | Range High: {highest:.2f} | Range Low: {lowest:.2f} | Net Change: {change:+.2f}% | ATR: {atr:.2f}")
+    lines.append("-" * 95)
+    lines.append(f"Latest Close: {latest['close']:.2f} | 200 EMA: {ema200_val:.2f} ({trend_200}) | Range: {lowest:.2f} - {highest:.2f} | Net Change: {change:+.2f}% | ATR: {atr:.2f}")
     return "\n".join(lines)
+

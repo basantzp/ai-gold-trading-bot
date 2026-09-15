@@ -39,3 +39,4 @@ Thumbs.db
 # AGY Bridge
 agy_bridge.log
 /tmp/agy_bridge.log
+.vercel
