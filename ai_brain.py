@@ -131,46 +131,75 @@ def clean_json_response(raw_text: str) -> Dict[str, Any]:
     raise ValueError(f"Could not parse valid JSON from AI response: {raw_text[:200]}")
 
 
+
+AGY_BRIDGE_URL = "http://127.0.0.1:8400"
+
+
+def call_antigravity_bridge(
+    symbol: str, current_price: float, atr: float, rsi_15m: float,
+    h4_summary: str, m15_summary: str, ttl: int = 300
+) -> Dict[str, Any]:
+    """
+    ⚡ FAST PATH: Calls the persistent agy bridge server (stream-json mode).
+    Requires agy_bridge.py to be running on localhost:8400.
+    Response time: ~3-5s (vs 35s cold-start) with in-memory caching.
+    """
+    payload = {
+        "symbol": symbol,
+        "current_price": current_price,
+        "atr": atr,
+        "rsi_15m": rsi_15m,
+        "h4_summary": h4_summary,
+        "m15_summary": m15_summary,
+        "ttl": ttl,
+    }
+    resp = requests.post(
+        f"{AGY_BRIDGE_URL}/analyze",
+        json=payload,
+        timeout=130
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"AGY Bridge error {resp.status_code}: {resp.text[:200]}")
+    return resp.json()
+
+
+def is_bridge_alive() -> bool:
+    """Quick health check — does not block if bridge is down."""
+    try:
+        r = requests.get(f"{AGY_BRIDGE_URL}/health", timeout=1.5)
+        return r.status_code == 200 and r.json().get("agy_alive", False)
+    except Exception:
+        return False
+
+
 def call_antigravity_cli(prompt: str) -> Dict[str, Any]:
     """
-    Executes quantitative market analysis using the local Antigravity CLI (`agy`).
-    Requires ZERO API keys or external subscriptions as it uses the authenticated
-    local Antigravity session.
+    🔄 FALLBACK PATH: Cold-starts agy -p when bridge is not running.
+    Slower (~35s) but zero-dependency — works without the bridge server.
     """
     agy_bin = shutil.which("agy") or os.path.expanduser("~/.local/bin/agy")
     if not os.path.exists(agy_bin):
-        raise RuntimeError(f"Antigravity CLI ('agy') not found at {agy_bin}. Ensure agy is on PATH.")
+        raise RuntimeError(f"Antigravity CLI ('agy') not found. Ensure agy is on PATH.")
 
     full_prompt = (
         f"{SYSTEM_PROMPT}\n\n"
         f"MARKET SNAPSHOT & DATA:\n{prompt}\n\n"
-        f"CRITICAL REMINDER: Output ONLY valid JSON matching the schema. No markdown wrapping or extra commentary."
+        f"Output ONLY valid JSON. No markdown."
     )
-
-    cmd = [
-        agy_bin,
-        "-p", full_prompt,
-        "--output-format", "text"
-    ]
-
     try:
         res = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=90
+            [agy_bin, "-p", full_prompt, "--output-format", "text",
+             "--disable-slash-commands", "--effort", "low"],
+            capture_output=True, text=True, timeout=180
         )
     except subprocess.TimeoutExpired:
-        raise RuntimeError("Antigravity CLI timed out after 90 seconds.")
+        raise RuntimeError("Antigravity CLI timed out after 180s.")
     except Exception as e:
         raise RuntimeError(f"Failed to execute Antigravity CLI: {e}")
 
     if res.returncode != 0:
-        err = res.stderr.strip() or res.stdout.strip()
-        raise RuntimeError(f"Antigravity CLI returned exit code {res.returncode}: {err}")
-
+        raise RuntimeError(f"agy exit {res.returncode}: {res.stderr.strip() or res.stdout.strip()}")
     return clean_json_response(res.stdout)
-
 
 
 def call_gemini_api(api_key: str, model: str, prompt: str) -> Dict[str, Any]:
@@ -344,15 +373,40 @@ def analyze_market(
 
     provider_clean = (provider or "Auto").lower()
 
-    # 1. Antigravity Native Engine (Zero-API / No external keys needed)
+    # ── 1. Antigravity Native Engine (Zero-API) ──────────────────
     if any(k in provider_clean for k in ["antigravity", "agy", "native"]):
+        # Extract structured fields for the bridge endpoint
+        latest_m15 = df_m15.iloc[-1] if (df_m15 is not None and not df_m15.empty) else {}
+        atr_val    = float(latest_m15.get("atr", current_price * 0.005) or current_price * 0.005)
+        rsi_val    = float(latest_m15.get("rsi_14", 50.0) or 50.0)
+        h4_sum     = format_candles_summary(df_h4, f"{symbol} Higher Timeframe (4-Hour)")
+        m15_sum    = format_candles_summary(df_m15, f"{symbol} Execution Timeframe (15-Minute)")
+
+        # ⚡ FAST PATH — bridge (stream-json persistent process, ~3-5s)
+        if is_bridge_alive():
+            try:
+                parsed = call_antigravity_bridge(
+                    symbol=symbol, current_price=current_price,
+                    atr=atr_val, rsi_15m=rsi_val,
+                    h4_summary=h4_sum, m15_summary=m15_sum
+                )
+                elapsed = parsed.pop("_elapsed_s", "?")
+                src     = parsed.pop("_source", "bridge")
+                label   = f"⚡ Antigravity AI — Bridge ({elapsed}s, {src})"
+                return parsed, label
+            except Exception as e:
+                print(f"[AGY-BRIDGE] error: {e} — falling back to CLI")
+
+        # 🔄 SLOW FALLBACK — cold subprocess (-p mode, ~35-180s)
         try:
+            print("[AGY] Bridge not available — using cold CLI (start agy_bridge.py for fast mode)")
             parsed = call_antigravity_cli(prompt)
-            return parsed, "⚡ Antigravity AI (Zero-API Native Engine)"
+            return parsed, "⚡ Antigravity AI — CLI Fallback (start bridge for fast mode)"
         except Exception as e:
             print(f"Antigravity CLI error: {e}")
             if provider_clean != "auto":
                 raise
+
 
     # 2. Google Gemini Provider
     if provider_clean in ["gemini", "google gemini"] or (provider_clean == "auto" and g_key):
