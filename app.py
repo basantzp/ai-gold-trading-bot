@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+import streamlit.components.v1 as components
 
 import config
 from data_engine import (
@@ -247,9 +248,103 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 
 # -------------------------------------------------------------
-# Interactive Candlestick Charts (4H vs 15M)
+# Interactive Candlestick Charts (TradingView + Multi-Timeframe)
 # -------------------------------------------------------------
-chart_tab1, chart_tab2 = st.tabs(["📊 15-Minute Execution Setup", "📈 4-Hour Macro Trend"])
+def render_tradingview_widget(symbol: str, theme: str = "light", height: int = 620):
+    """Renders the official full-featured TradingView chart widget with live ticks."""
+    tv_symbol_map = {
+        "XAUUSD": "OANDA:XAUUSD",
+        "BTCUSD": "BINANCE:BTCUSDT",
+        "ETHUSD": "BINANCE:ETHUSDT",
+        "EURUSD": "FX:EURUSD",
+        "GBPUSD": "FX:GBPUSD",
+        "USDJPY": "FX:USDJPY",
+        "SOLUSD": "BINANCE:SOLUSDT"
+    }
+    tv_symbol = tv_symbol_map.get(symbol.upper(), f"OANDA:{symbol.upper()}")
+    is_dark = (theme.lower() == "dark")
+    bg_color = "#131722" if is_dark else "#ffffff"
+    toolbar_bg = "#1e222d" if is_dark else "#f1f3f6"
+
+    html_code = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body, html {{ margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background-color: {bg_color}; }}
+        #tv_chart_container {{ height: 100%; width: 100%; }}
+      </style>
+    </head>
+    <body>
+      <div id="tv_chart_container"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+      <script type="text/javascript">
+        new TradingView.widget({{
+          "autosize": true,
+          "symbol": "{tv_symbol}",
+          "interval": "15",
+          "timezone": "Etc/UTC",
+          "theme": "{"dark" if is_dark else "light"}",
+          "style": "1",
+          "locale": "en",
+          "toolbar_bg": "{toolbar_bg}",
+          "enable_publishing": false,
+          "withdateranges": true,
+          "hide_side_toolbar": false,
+          "allow_symbol_change": true,
+          "save_image": true,
+          "details": true,
+          "hotlist": false,
+          "calendar": false,
+          "studies": [
+            "RSI@tv-basicstudies",
+            "MASimple@tv-basicstudies"
+          ],
+          "show_popup_button": true,
+          "popup_width": "1000",
+          "popup_height": "650",
+          "container_id": "tv_chart_container"
+        }});
+      </script>
+    </body>
+    </html>
+    """
+    components.html(html_code, height=height)
+
+
+chart_tab_tv, chart_tab1, chart_tab2 = st.tabs([
+    "⚡ Official TradingView Terminal (Live & Interactive)",
+    "📊 15-Minute Tactical Setup",
+    "📈 4-Hour Macro Trend"
+])
+
+with chart_tab_tv:
+    # Quick Trading Header Bar (matching TradingView Buy/Sell buttons)
+    q_col1, q_col2, q_col3, q_col4 = st.columns([1.5, 1, 1.5, 2])
+    with q_col1:
+        sell_label = f"🔴 {current_price - 0.5:,.1f} SELL" if current_price else "🔴 SELL"
+        quick_sell = st.button(sell_label, use_container_width=True, help="Instantly execute SELL order")
+    with q_col2:
+        quick_lot = st.number_input("Lots", min_value=0.01, max_value=5.0, value=0.01, step=0.01, label_visibility="collapsed")
+    with q_col3:
+        buy_label = f"🔵 {current_price + 0.5:,.1f} BUY" if current_price else "🔵 BUY"
+        quick_buy = st.button(buy_label, use_container_width=True, type="primary", help="Instantly execute BUY order")
+    with q_col4:
+        tv_theme_choice = st.radio("Chart Theme", ["Light Mode ☀️", "Dark Mode 🌙"], horizontal=True, label_visibility="collapsed")
+
+    if quick_buy:
+        res = execute_trade(selected_symbol, "BUY", lot_size=quick_lot, current_price=current_price)
+        st.success(f"🚀 Executed BUY {quick_lot} lots of {selected_symbol} at ${current_price:,.2f}!")
+        st.rerun()
+
+    if quick_sell:
+        res = execute_trade(selected_symbol, "SELL", lot_size=quick_lot, current_price=current_price)
+        st.success(f"🚀 Executed SELL {quick_lot} lots of {selected_symbol} at ${current_price:,.2f}!")
+        st.rerun()
+
+    selected_theme = "light" if "Light" in tv_theme_choice else "dark"
+    render_tradingview_widget(selected_symbol, theme=selected_theme, height=620)
 
 def create_candlestick_chart(df: pd.DataFrame, title: str):
     if df is None or df.empty:
@@ -303,7 +398,6 @@ def create_candlestick_chart(df: pd.DataFrame, title: str):
             mode="lines", name="RSI",
             line=dict(color="#c084fc", width=2)
         ), row=2, col=1)
-        # Overbought / Oversold lines
         fig.add_hline(y=70, line_dash="dash", line_color="#ef4444", opacity=0.6, row=2, col=1)
         fig.add_hline(y=30, line_dash="dash", line_color="#10b981", opacity=0.6, row=2, col=1)
 
