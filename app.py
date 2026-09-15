@@ -421,6 +421,37 @@ if execute_btn:
                 comment=f"AI-{decision}-{confidence}%",
                 current_price=current_price
             )
+            if execution_result.get("success"):
+                try:
+                    from chart_snapshot import generate_trade_screenshot
+                    import journal
+                    order_id = execution_result.get("order_id", f"POS-{int(time.time()*1000)%10000000}")
+                    shot_path = generate_trade_screenshot(
+                        df=df_m15,
+                        symbol=selected_symbol,
+                        action=decision,
+                        entry_price=current_price,
+                        sl=sl_val,
+                        tp=tp_val,
+                        position_id=order_id,
+                        confidence=confidence
+                    )
+                    journal.create_journal_entry(
+                        trade_id=order_id,
+                        symbol=selected_symbol,
+                        action=decision,
+                        entry_price=current_price,
+                        volume=lot_size,
+                        sl=sl_val,
+                        tp=tp_val,
+                        confidence=confidence,
+                        h4_analysis=decision_data.get("h4_trend_analysis", ""),
+                        m15_analysis=decision_data.get("m15_setup_analysis", ""),
+                        reasoning=decision_data.get("reasoning", ""),
+                        screenshot_path=shot_path
+                    )
+                except Exception as je:
+                    print(f"Journal error: {je}")
         else:
             execution_result = {
                 "success": False,
@@ -629,3 +660,87 @@ def render_live_portfolio_ledger():
         st.caption("No closed trades yet. When active positions hit Take Profit (TP) or Stop Loss (SL), their realized dollar profit will appear here.")
 
 render_live_portfolio_ledger()
+
+
+# -------------------------------------------------------------
+# Live Trading Journal (Visual Snapshots & AI Trade Audits)
+# -------------------------------------------------------------
+st.markdown("---")
+st.subheader("📔 Live Institutional Trading Journal & Visual Audit")
+st.caption("Auto-generated visual trade logs: chart screenshots, AI entry rationale, confluences, and post-trade audits.")
+
+@st.fragment(run_every="5s")
+def render_live_journal():
+    import journal
+    entries = journal.get_journal_entries()
+    if not entries:
+        st.info("ℹ️ No journal entries yet. When a trade executes, a high-resolution chart screenshot and full AI thesis will be automatically logged here.")
+        return
+
+    # Filter controls
+    f_col1, f_col2 = st.columns([2, 1])
+    with f_col1:
+        filter_opt = st.radio("Filter Journal", ["All Trades", "🟢 Active Only", "🏆 Wins Only", "🛑 Losses Only"], horizontal=True)
+
+    filtered_entries = entries
+    if filter_opt == "🟢 Active Only":
+        filtered_entries = [e for e in entries if e.get("status") == "ACTIVE"]
+    elif filter_opt == "🏆 Wins Only":
+        filtered_entries = [e for e in entries if e.get("outcome") == "WIN"]
+    elif filter_opt == "🛑 Losses Only":
+        filtered_entries = [e for e in entries if e.get("outcome") == "LOSS"]
+
+    st.markdown(f"**Showing {len(filtered_entries)} of {len(entries)} recorded journal trades:**")
+
+    for entry in filtered_entries:
+        status = entry.get("status", "ACTIVE")
+        outcome = entry.get("outcome", "PENDING")
+        action = entry.get("action", "BUY")
+        symbol = entry.get("symbol", "XAUUSD")
+        entry_p = entry.get("entry_price", 0.0)
+        exit_p = entry.get("exit_price")
+        pnl = entry.get("realized_pnl", 0.0)
+        ret_pct = entry.get("return_pct", 0.0)
+        trade_id = entry.get("trade_id", "")
+        shot_path = entry.get("screenshot_path")
+
+        if status == "ACTIVE":
+            badge = "🟢 ACTIVE"
+        elif outcome == "WIN":
+            badge = f"🏆 WIN (+${pnl:,.2f} | +{ret_pct:.2f}%)"
+        elif outcome == "LOSS":
+            badge = f"🛑 LOSS (${pnl:,.2f} | {ret_pct:.2f}%)"
+        else:
+            badge = f"⚖️ BREAKEVEN (${pnl:,.2f})"
+
+        with st.expander(f"{badge} — {symbol} {action} @ ${entry_p:,.2f} ({entry.get('open_time', '')})", expanded=(status == "ACTIVE")):
+            j_col1, j_col2 = st.columns([1, 1])
+            with j_col1:
+                st.markdown(f"### Trade Audit: `{trade_id}`")
+                st.markdown(f"- **Asset:** `{symbol}`")
+                st.markdown(f"- **Direction:** **{action}** ({entry.get('volume', 0.01)} lots)")
+                st.markdown(f"- **Entry Price:** `${entry_p:,.2f}`")
+                st.markdown(f"- **Take Profit (TP):** `${entry.get('tp', 0.0):,.2f}`")
+                st.markdown(f"- **Stop Loss (SL):** `${entry.get('sl', 0.0):,.2f}`")
+                st.markdown(f"- **Risk / Reward:** `{entry.get('risk_reward', '1:2.0')}`")
+                st.markdown(f"- **AI Conviction:** `{entry.get('confidence', 70)}%`")
+                if status == "CLOSED":
+                    st.markdown(f"- **Exit Price:** `${exit_p:,.2f}`")
+                    st.markdown(f"- **Realized PnL:** `${pnl:+,.2f}` ({ret_pct:+.2f}%)")
+                    st.markdown(f"- **Exit Reason:** `{entry.get('exit_reason', 'Closed')}`")
+                    st.markdown(f"- **Close Time:** `{entry.get('close_time', '')}`")
+
+                st.markdown("#### 🧠 AI Confluence & Thesis:")
+                st.markdown(f"**Macro 4H Trend:** {entry.get('h4_analysis', 'N/A')}")
+                st.markdown(f"**Tactical 15M Setup:** {entry.get('m15_analysis', 'N/A')}")
+                st.markdown(f"**Portfolio Thesis:** {entry.get('reasoning', 'N/A')}")
+                st.info(f"📝 **Post-Trade Reflection:** {entry.get('notes', 'Active trade in progress...')}")
+
+            with j_col2:
+                st.markdown("#### 📸 Trade Setup Visual Snapshot")
+                if shot_path and os.path.exists(shot_path):
+                    st.image(shot_path, caption=f"Execution Chart Setup: {trade_id}", use_container_width=True)
+                else:
+                    st.caption("Chart snapshot generating or unavailable.")
+
+render_live_journal()

@@ -200,6 +200,14 @@ def close_existing_position(position_id: str, exit_price: float, exit_reason: st
     # Recompute equity
     recalculate_equity(state, symbol, exit_price)
     save_account_state(state)
+
+    # Sync with Trading Journal
+    try:
+        import journal
+        journal.mark_journal_entry_closed(pos["position_id"], exit_price, pnl, exit_reason)
+    except Exception as je:
+        print(f"[PORTFOLIO] Journal close sync error: {je}")
+
     return closed_record
 
 

@@ -174,9 +174,41 @@ class AutonomousTrader:
                 )
 
                 if result.get("success"):
+                    order_id = result.get("order_id", f"POS-{int(time.time()*1000)%10000000}")
                     msg = f"🚀 Executed {decision} 0.01 lots @ ${current_price:.2f} | SL: ${sl:.2f} | TP: ${tp:.2f} (Conviction: {confidence}%)"
                     self.last_message = msg
                     logger.info(msg)
+
+                    # Generate visual chart snapshot & record in Trading Journal
+                    try:
+                        from chart_snapshot import generate_trade_screenshot
+                        import journal
+                        screenshot_file = generate_trade_screenshot(
+                            df=df_m15,
+                            symbol=self.symbol,
+                            action=decision,
+                            entry_price=current_price,
+                            sl=sl,
+                            tp=tp,
+                            position_id=order_id,
+                            confidence=confidence
+                        )
+                        journal.create_journal_entry(
+                            trade_id=order_id,
+                            symbol=self.symbol,
+                            action=decision,
+                            entry_price=current_price,
+                            volume=self.lot_size,
+                            sl=sl,
+                            tp=tp,
+                            confidence=confidence,
+                            h4_analysis=decision_data.get("h4_trend_analysis", ""),
+                            m15_analysis=decision_data.get("m15_setup_analysis", ""),
+                            reasoning=decision_data.get("reasoning", ""),
+                            screenshot_path=screenshot_file
+                        )
+                    except Exception as je:
+                        logger.error(f"Failed to generate trade screenshot/journal: {je}")
                 else:
                     msg = f"Order failed: {result.get('message')}"
                     self.last_message = msg
