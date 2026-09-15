@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚡ AI Gold Trading Bot | basantpokharel.com.np</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0b0e14;
+      --card-bg: #131722;
+      --card-border: #1e222d;
+      --accent: #38bdf8;
+      --green: #10b981;
+      --red: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--card-border);
+      padding: 16px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand h1 {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #f8fafc, #38bdf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--green);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .kpi-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      padding: 18px 28px;
+      background: rgba(19, 23, 34, 0.5);
+      border-bottom: 1px solid var(--card-border);
+    }
+    .kpi-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      padding: 14px 18px;
+      border-radius: 8px;
+    }
+    .kpi-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .kpi-value {
+      font-size: 20px;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 4px;
+    }
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 28px;
+      gap: 20px;
+    }
+    .chart-wrapper {
+      flex: 1;
+      min-height: 580px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+    }
+    .quick-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .btn {
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s;
+      border: none;
+    }
+    .btn-buy { background: #2563eb; color: #fff; }
+    .btn-buy:hover { background: #1d4ed8; }
+    .btn-sell { background: #dc2626; color: #fff; }
+    .btn-sell:hover { background: #b91c1c; }
+    .btn-secondary {
+      background: #1e222d;
+      color: var(--text);
+      border: 1px solid #334155;
+    }
+    .btn-secondary:hover { background: #334155; }
+    footer {
+      padding: 16px 28px;
+      border-top: 1px solid var(--card-border);
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span style="font-size:24px;">⚡</span>
+      <div>
+        <h1>AI Hedge Fund — Gold Trading Terminal</h1>
+        <p style="font-size:12px; color:var(--text-muted);">Antigravity Zero-API Native Brain &bull; XAUUSD Macro & Tactical Engine</p>
+      </div>
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <div class="status-badge">
+        <div class="status-dot"></div>
+        <span>AUTONOMOUS ENGINE ACTIVE</span>
+      </div>
+      <a href="https://github.com/basantzp/ai-gold-trading-bot" target="_blank" class="btn btn-secondary">GitHub Repo ↗</a>
+    </div>
+  </header>
+
+  <div class="kpi-bar">
+    <div class="kpi-card">
+      <div class="kpi-label">Initial Capital</div>
+      <div class="kpi-value" style="color:var(--text);">$100.00</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Active Symbol</div>
+      <div class="kpi-value" style="color:var(--accent);">XAUUSD (Gold)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">AI Engine</div>
+      <div class="kpi-value" style="color:#a78bfa; font-size:15px; margin-top:8px;">Antigravity Native</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Execution Strategy</div>
+      <div class="kpi-value" style="color:var(--green); font-size:15px; margin-top:8px;">4H Bias + 15M Entry</div>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <div class="chart-wrapper">
+      <!-- TradingView Widget BEGIN -->
+      <div class="tradingview-widget-container" style="height:100%;width:100%">
+        <div id="tradingview_chart" style="height:100%;width:100%"></div>
+        <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+        <script type="text/javascript">
+          new TradingView.widget({
+            "autosize": true,
+            "symbol": "OANDA:XAUUSD",
+            "interval": "15",
+            "timezone": "Etc/UTC",
+            "theme": "dark",
+            "style": "1",
+            "locale": "en",
+            "toolbar_bg": "#1e222d",
+            "enable_publishing": false,
+            "withdateranges": true,
+            "hide_side_toolbar": false,
+            "allow_symbol_change": true,
+            "save_image": true,
+            "details": true,
+            "hotlist": false,
+            "calendar": false,
+            "studies": [
+              "RSI@tv-basicstudies",
+              "MASimple@tv-basicstudies"
+            ],
+            "container_id": "tradingview_chart"
+          });
+        </script>
+      </div>
+      <!-- TradingView Widget END -->
+    </div>
+  </div>
+
+  <footer>
+    <div>Domain: <strong>basantpokharel.com.np</strong> &bull; Powered by Antigravity AI, Cloudflare & Vercel</div>
+    <div>Multi-Timeframe Algorithmic Trading Core</div>
+  </footer>
+</body>
+</html>
