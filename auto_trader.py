@@ -41,7 +41,7 @@ class AutonomousTrader:
         self.is_running = False
         self.thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
-        self.interval = 20  # seconds between cycles
+        self.interval = 45  # seconds between cycles (allows AI analysis and TP/SL check to execute smoothly)
         self.symbol = config.DEFAULT_SYMBOL or "XAUUSD"
         self.lot_size = 0.01  # Fallback base micro lot
         self.min_confidence = getattr(config, "MIN_CONFLUENCE_SCORE", 65)  # Minimum conviction to enter
@@ -55,17 +55,18 @@ class AutonomousTrader:
         self.last_strategy_confluence: Dict[str, Any] = {}
         self.last_compounding_metrics: Dict[str, Any] = {}
 
-    def start(self, interval: int = 20, symbol: str = "XAUUSD") -> Dict[str, Any]:
+    def start(self, interval: int = 45, symbol: str = "XAUUSD") -> Dict[str, Any]:
         """Starts the autonomous trading loop in a background daemon thread."""
         with self._lock:
             if self.is_running and self.thread and self.thread.is_alive():
                 return {"success": True, "message": "Autonomous trader is already running."}
 
-            self.interval = max(10, interval)
+            self.interval = max(15, interval)
             self.symbol = symbol
             self.stop_event.clear()
             self.is_running = True
             self.last_message = f"🚀 AutoTrader started on {self.symbol} (Compounding: {'Active' if self.hyper_compounding else 'Fixed'} | interval: {self.interval}s)."
+
 
             self.thread = threading.Thread(target=self._run_loop, daemon=True)
             self.thread.start()
