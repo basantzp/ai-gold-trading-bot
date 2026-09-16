@@ -409,12 +409,22 @@ def render_tradingview_widget(symbol: str, theme: str = "light", height: int = 6
     components.html(html_code, height=height)
 
 
-chart_tab_tv, chart_tab_strat, chart_tab1, chart_tab2 = st.tabs([
-    "⚡ Official TradingView Terminal (Live & Interactive)",
+chart_tab_pro, chart_tab_tv, chart_tab_strat, chart_tab1, chart_tab2 = st.tabs([
+    "🏛️ NEXUS Institutional Pro Terminal (Refinitiv / Bloomberg)",
+    "⚡ Standard TradingView Terminal (Live & Interactive)",
     "🧠 3 Quantitative Strategies (YouTube Masterclasses & Live Metrics)",
     "📊 15-Minute Tactical Setup",
     "📈 4-Hour Macro Trend"
 ])
+
+with chart_tab_pro:
+    terminal_path = os.path.join(os.path.dirname(__file__), "public", "index.html")
+    if os.path.exists(terminal_path):
+        with open(terminal_path, "r", encoding="utf-8") as f:
+            pro_terminal_html = f.read()
+        components.html(pro_terminal_html, height=880, scrolling=True)
+    else:
+        st.warning("Institutional terminal asset not found.")
 
 with chart_tab_tv:
     # Quick Trading Header Bar (matching TradingView Buy/Sell buttons)
